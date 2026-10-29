@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>APEX FOCUS F1 戰術讀書系統 V3.5</title>
+  
+  <meta name="theme-color" content="#0A0D14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <!-- 1. Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- 2. React Core -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+
+  <!-- 3. Babel Standalone -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- 4. Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Service Worker 離線自動快取引擎 -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        const swCode = `
+          const CACHE_NAME = 'apex-f1-full-v3';
+          const urlsToCache = [
+            './',
+            'https://cdn.tailwindcss.com',
+            'https://unpkg.com/react@18/umd/react.production.min.js',
+            'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
+            'https://unpkg.com/@babel/standalone/babel.min.js',
+            'https://unpkg.com/lucide@latest'
+          ];
+          self.addEventListener('install', e => {
+            e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
+          });
+          self.addEventListener('fetch', e => {
+            e.respondWith(caches.match(e.request).then(response => response || fetch(e.request)));
+          });
+        `;
+        const blob = new Blob([swCode], { type: 'application/javascript' });
+        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
+      });
+    }
+  </script>
+</head>
+<body class="bg-[#0A0D14] text-slate-100 font-sans selection:bg-red-600 selection:text-white min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // 安全取得 Lucide 圖示
+    const getIcon = (name) => {
+      if (window.lucide && window.lucide.icons && window.lucide.icons[name]) {
+        return window.lucide.icons[name];
+      }
+      return null;
+    };
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('timer');
+
+      const [lapsCompleted, setLapsCompleted] = useState(() => {
+        const saved = localStorage.getItem('apex_zh_laps');
+        return saved ? parseInt(saved, 10) : 0;
+      });
+
+      const [tasks, setTasks] = useState(() => {
+        const saved = localStorage.getItem('apex_zh_tasks');
+        return saved ? JSON.parse(saved) : [
+          { id: 1, title: '微積分 第四章 微分應用與積分入門', subject: '數學', lapsReq: 4, lapsDone: 0, completed: false, date: '2026-10-29' },
+          { id: 2, title: '物理 力學與牛頓運動定律題目演練', subject: '物理', lapsReq: 3, lapsDone: 0, completed: false, date: '2026-10-29' }
+        ];
+      });
+
+      const [exams, setExams] = useState(() => {
+        const saved = localStorage.getItem('apex_zh_exams');
+        return saved ? JSON.parse(saved) : [];
+      });
+
+      const [gpCountdowns, setGpCountdowns] = useState(() => {
+        const saved = localStorage.getItem('apex_zh_gp_countdowns');
+        return saved ? JSON.parse(saved) : [
+          { id: 'gp_1', title: '學測大獎賽 (Main GP)', date: '2027-01-20T08:30', isPrimary: true }
+        ];
+      });
+
+      const [upgradesList, setUpgradesList] = useState(() => {
+        const saved = localStorage.getItem('apex_zh_pu_list');
+        return saved ? JSON.parse(saved) : [
+          {
+            id: 'mguk',
+            title: 'MGU-K 覆盤動能回收',
+            category: '主動回想與間隔重複',
+            hp: 100,
+            desc: '在重新讀書前，先透過閃卡或主動提取舊記憶（廢熱/煞車動能），將快忘記的知識重新轉化為強大輸出。',
+            tag: '記憶強化'
+          },
+          {
+            id: 'drs',
+            title: 'DRS 尾翼減阻系統',
+            category: '手機禁食與數位極簡',
+            hp: 85,
+            desc: '開啟 DRS 壓低手機通知與外界干擾阻力，讓專注力在直線賽道上瞬間爆發出極速。',
+            tag: '抗分心'
+          },
+          {
+            id: 'aduo',
+            title: 'ADUO 費曼雙渦輪增壓',
+            category: '費曼學習法',
+            hp: 120,
+            desc: '用高壓壓縮大腦資訊，將複雜難題用最簡單的語言講給不懂的人聽，大幅提升進氣效率。',
+            tag: '深度理解'
+          }
+        ];
+      });
+
+      const [activeUpgrades, setActiveUpgrades] = useState(() => {
+        const saved = localStorage.getItem('apex_zh_pu_upgrades');
+        return saved ? JSON.parse(saved) : ['mguk', 'drs'];
+      });
+
+      const [soundEnabled, setSoundEnabled] = useState(true);
+
+      useEffect(() => { localStorage.setItem('apex_zh_laps', lapsCompleted.toString()); }, [lapsCompleted]);
+      useEffect(() => { localStorage.setItem('apex_zh_tasks', JSON.stringify(tasks)); }, [tasks]);
+      useEffect(() => { localStorage.setItem('apex_zh_exams', JSON.stringify(exams)); }, [exams]);
+      useEffect(() => { localStorage.setItem('apex_zh_pu_list', JSON.stringify(upgradesList)); }, [upgradesList]);
+      useEffect(() => { localStorage.setItem('apex_zh_pu_upgrades', JSON.stringify(activeUpgrades)); }, [activeUpgrades]);
+      useEffect(() => { localStorage.setItem('apex_zh_gp_countdowns', JSON.stringify(gpCountdowns)); }, [gpCountdowns]);
+
+      const calculateTotalHp = () => {
+        const equippedHp = upgradesList
+          .filter(item => activeUpgrades.includes(item.id))
+          .reduce((sum, item) => sum + (parseInt(item.hp, 10) || 0), 0);
+        return 700 + equippedHp;
+      };
+
+      const playBeep = useCallback((freq = 880, type = 'sine', duration = 0.15) => {
+        if (!soundEnabled) return;
+        try {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration);
+        } catch (e) {}
+      }, [soundEnabled]);
+
+      return (
+        <div className="min-h-screen bg-[#0A0D14] text-slate-100 font-sans flex flex-col pb-10">
+          {/* 頂部賽車遙測數據列 */}
+          <header className="relative z-10 border-b border-slate-800/80 bg-[#0F131C]/90 backdrop-blur-md px-4 py-3 sticky top-0">
+            <div className="max-w-7xl mx-auto flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="bg-red-600 text-white font-black italic tracking-wider text-lg px-2.5 py-1 rounded transform -skew-x-12 shadow-lg shadow-red-600/30">
+                  APEX
+                </div>
+                <div>
+                  <h1 className="text-base font-bold tracking-wide uppercase flex items-center gap-2 font-mono">
+                    APEX FOCUS <span className="text-[10px] bg-red-950/80 text-red-400 border border-red-800/50 px-2 py-0.5 rounded-full font-sans">V3.5</span>
+                  </h1>
+                  <p className="text-[10px] text-slate-400 hidden sm:block">賽車級時間管理 & 學習動力單元架構</p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3 text-xs font-mono">
+                <div className="bg-slate-900/80 border border-slate-800 px-2.5 py-1 rounded-lg text-amber-400 font-bold">
+                  🏆 {lapsCompleted} Laps
+                </div>
+                <div className="bg-slate-900/80 border border-slate-800 px-2.5 py-1 rounded-lg text-emerald-400 font-bold">
+                  ⚡ {calculateTotalHp()} HP
+                </div>
+                <button 
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  className="p-1.5 rounded-lg bg-slate-800 text-slate-300"
+                >
+                  {soundEnabled ? '🔊' : '🔇'}
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* 導覽分頁 */}
+          <nav className="relative z-10 bg-[#0B0E17] border-b border-slate-800/60 sticky top-[53px]">
+            <div className="max-w-7xl mx-auto px-2 flex space-x-1 overflow-x-auto py-1.5 text-xs font-mono">
+              <button 
+                onClick={() => { setActiveTab('timer'); playBeep(1200, 'triangle', 0.05); }}
+                className={`py-2 px-3 font-bold rounded-lg transition whitespace-nowrap ${activeTab === 'timer' ? 'bg-red-600 text-white' : 'bg-slate-900 text-slate-400'}`}
+              >
+                1. PIT Stop 戰術計時器
+              </button>
+              <button 
+                onClick={() => { setActiveTab('upgrades'); playBeep(1200, 'triangle', 0.05); }}
+                className={`py-2 px-3 font-bold rounded-lg transition whitespace-nowrap ${activeTab === 'upgrades' ? 'bg-red-600 text-white' : 'bg-slate-900 text-slate-400'}`}
+              >
+                2. PU 引擎升級庫 ({activeUpgrades.length})
+              </button>
+              <button 
+                onClick={() => { setActiveTab('calendar'); playBeep(1200, 'triangle', 0.05); }}
+                className={`py-2 px-3 font-bold rounded-lg transition whitespace-nowrap ${activeTab === 'calendar' ? 'bg-red-600 text-white' : 'bg-slate-900 text-slate-400'}`}
+              >
+                3. 大獎賽讀書計畫
+              </button>
+              <button 
+                onClick={() => { setActiveTab('analytics'); playBeep(1200, 'triangle', 0.05); }}
+                className={`py-2 px-3 font-bold rounded-lg transition whitespace-nowrap ${activeTab === 'analytics' ? 'bg-red-600 text-white' : 'bg-slate-900 text-slate-400'}`}
+              >
+                4. 正賽 Telemetry 數據
+              </button>
+            </div>
+          </nav>
+
+          {/* 主要模組渲染 */}
+          <main className="relative z-10 flex-grow max-w-7xl w-full mx-auto p-4 md:p-6">
+            {activeTab === 'timer' && (
+              <TimerSection 
+                playBeep={playBeep} 
+                setLapsCompleted={setLapsCompleted}
+                upgradesList={upgradesList}
+                activeUpgrades={activeUpgrades}
+                tasks={tasks}
+              />
+            )}
+
+            {activeTab === 'upgrades' && (
+              <UpgradesSection 
+                upgradesList={upgradesList}
+                setUpgradesList={setUpgradesList}
+                activeUpgrades={activeUpgrades} 
+                setActiveUpgrades={setActiveUpgrades}
+                playBeep={playBeep}
+              />
+            )}
+
+            {activeTab === 'calendar' && (
+              <CalendarSection 
+                tasks={tasks} 
+                setTasks={setTasks} 
+                gpCountdowns={gpCountdowns}
+                setGpCountdowns={setGpCountdowns}
+                playBeep={playBeep}
+                setLapsCompleted={setLapsCompleted}
+              />
+            )}
+
+            {activeTab === 'analytics' && (
+              <AnalyticsSection 
+                exams={exams} 
+                setExams={setExams} 
+                lapsCompleted={lapsCompleted}
+                playBeep={playBeep}
+              />
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // 1. PIT Stop 戰術計時器模組 (含 RPM 轉速燈 & Safety Car 模式)
+    function TimerSection({ playBeep, setLapsCompleted, upgradesList, activeUpgrades, tasks }) {
+      const STINT_MODES = {
+        SPRINT: { name: 'Sprint Stint (單圈衝刺)', duration: 25 * 60 },
+        LONG: { name: 'Long Stint (長途巡航)', duration: 50 * 60 },
+        PIT: { name: 'Box Stop (PIT 區換胎休息)', duration: 5 * 60 }
+      };
+
+      const [modeKey, setModeKey] = useState('SPRINT');
+      const [isRunning, setIsRunning] = useState(false);
+      const [secondsLeft, setSecondsLeft] = useState(STINT_MODES.SPRINT.duration);
+      const [safetyCar, setSafetyCar] = useState(false);
+
+      useEffect(() => {
+        let timer = null;
+        if (isRunning && secondsLeft > 0) {
+          timer = setInterval(() => setSecondsLeft(prev => prev - 1), 1000);
+        } else if (secondsLeft === 0 && isRunning) {
+          setIsRunning(false);
+          playBeep(1200, 'sawtooth', 0.3);
+          if (modeKey !== 'PIT') {
+            setLapsCompleted(prev => prev + 1);
+            alert('🏁 P1! 本圈衝刺完成，Box Box Box! 進入 PIT Stop 換胎休息！');
+            setModeKey('PIT');
+            setSecondsLeft(STINT_MODES.PIT.duration);
+          } else {
+            alert('🟢 PIT Stop 完成！準備重返賽道！');
+            setModeKey('SPRINT');
+            setSecondsLeft(STINT_MODES.SPRINT.duration);
+          }
+        }
+        return () => clearInterval(timer);
+      }, [isRunning, secondsLeft, modeKey, playBeep, setLapsCompleted]);
+
+      const switchMode = (key) => {
+        setIsRunning(false);
+        setModeKey(key);
+        setSecondsLeft(STINT_MODES[key].duration);
+        playBeep(1000, 'sine', 0.1);
+      };
+
+      const formatTime = (secs) => {
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      };
+
+      const totalSec = STINT_MODES[modeKey].duration;
+      const progressRatio = 1 - (secondsLeft / totalSec);
+      const activeLeds = Math.min(15, Math.floor(progressRatio * 15));
+
+      return (
+        <div className="space-y-6">
+          <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs transition ${
+            safetyCar ? 'bg-amber-950/80 border-amber-500 text-amber-300' : 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+          }`}>
+            <div className="font-bold uppercase tracking-wider">
+              {safetyCar ? '⚠️ SAFETY CAR MODE (降溫輕量讀書)' : '🟢 GREEN FLAG / MAXIMUM ATTACK (衝刺模式)'}
+            </div>
+            <button 
+              onClick={() => { setSafetyCar(!safetyCar); playBeep(900, 'triangle', 0.1); }}
+              className="px-2 py-1 rounded border border-current text-[10px]"
+            >
+              觸發 Safety Car
+            </button>
+          </div>
+
+          <div className="bg-gradient-to-b from-[#0F131D] to-[#080B12] border border-slate-800 rounded-2xl p-6 text-center shadow-2xl">
+            {/* RPM 轉速燈號 */}
+            <div className="mb-6">
+              <div className="flex justify-between text-[10px] font-mono text-slate-500 mb-1.5">
+                <span>REV LIMITER (RPM 轉速儀)</span>
+                <span>{Math.round(progressRatio * 100)}% SPEED</span>
+              </div>
+              <div className="grid grid-cols-15 gap-1 md:gap-2">
+                {Array.from({ length: 15 }).map((_, idx) => {
+                  const isActive = idx < activeLeds;
+                  let colorClass = 'bg-slate-800';
+                  if (isActive) {
+                    if (idx < 5) colorClass = 'bg-emerald-500 shadow-md shadow-emerald-500/50';
+                    else if (idx < 10) colorClass = 'bg-red-500 shadow-md shadow-red-500/50';
+                    else colorClass = 'bg-blue-500 shadow-md shadow-blue-500/50 animate-pulse';
+                  }
+                  return <div key={idx} className={`h-3 rounded-sm transition-all ${colorClass}`} />;
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-center gap-2 mb-6 font-mono text-xs">
+              <button onClick={() => switchMode('SPRINT')} className={`px-3 py-1.5 rounded-lg border ${modeKey === 'SPRINT' ? 'bg-red-600 border-red-500 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'}`}>25M Sprint</button>
+              <button onClick={() => switchMode('LONG')} className={`px-3 py-1.5 rounded-lg border ${modeKey === 'LONG' ? 'bg-red-600 border-red-500 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'}`}>50M Long Stint</button>
+              <button onClick={() => switchMode('PIT')} className={`px-3 py-1.5 rounded-lg border ${modeKey === 'PIT' ? 'bg-blue-600 border-blue-500 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'}`}>5M PIT Stop</button>
+            </div>
+
+            <div className="text-7xl md:text-9xl font-black font-mono tracking-tighter text-white my-4">
+              {formatTime(secondsLeft)}
+            </div>
+            <p className="text-xs font-mono text-slate-400 uppercase tracking-widest">{STINT_MODES[modeKey].name}</p>
+
+            <div className="flex justify-center items-center space-x-3 mt-6">
+              <button
+                onClick={() => { setIsRunning(!isRunning); playBeep(1100, 'sine', 0.1); }}
+                className={`px-8 py-3.5 rounded-xl font-mono font-black text-xs tracking-wider transition ${isRunning ? 'bg-amber-500 text-slate-950' : 'bg-red-600 text-white shadow-lg shadow-red-600/30'}`}
+              >
+                {isRunning ? 'BOX / PAUSE (暫停)' : 'PUSH NOW (啟動衝刺)'}
+              </button>
+              <button
+                onClick={() => { setIsRunning(false); setSecondsLeft(totalSec); playBeep(800, 'sine', 0.1); }}
+                className="p-3.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 font-mono text-xs"
+              >
+                🔄 重置
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+            <div className="bg-[#0F131D] border border-slate-800 rounded-xl p-4">
+              <h3 className="text-slate-400 font-bold mb-2">⚙️ 已裝備之 PU 讀書升級套件</h3>
+              <div className="space-y-1.5">
+                {upgradesList.filter(u => activeUpgrades.includes(u.id)).map(u => (
+                  <div key={u.id} className="bg-slate-900/80 p-2 rounded flex justify-between">
+                    <span className="text-white font-bold">{u.title}</span>
+                    <span className="text-emerald-400 font-bold">+{u.hp} HP</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-[#0F131D] border border-slate-800 rounded-xl p-4">
+              <h3 className="text-slate-400 font-bold mb-2">📋 今日預定衝刺任務</h3>
+              <div className="space-y-1.5">
+                {tasks.slice(0, 3).map(t => (
+                  <div key={t.id} className="bg-slate-900/80 p-2 rounded flex justify-between">
+                    <span className={t.completed ? 'line-through text-slate-500' : 'text-white'}>{t.title}</span>
+                    <span className="text-amber-400 font-bold">{t.lapsDone}/{t.lapsReq} 圈</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 2. PU 引擎升級庫模組
+    function UpgradesSection({ upgradesList, setUpgradesList, activeUpgrades, setActiveUpgrades, playBeep }) {
+      const [title, setTitle] = useState('');
+      const [desc, setDesc] = useState('');
+      const [hp, setHp] = useState(100);
+
+      const toggleUpgrade = (id) => {
+        playBeep(1200, 'sine', 0.1);
+        setActiveUpgrades(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+      };
+
+      const handleAdd = (e) => {
+        e.preventDefault();
+        if (!title.trim() || !desc.trim()) return;
+        const newUp = { id: `custom_${Date.now()}`, title, category: '自訂學習法', hp: parseInt(hp, 10) || 50, desc };
+        setUpgradesList([newUp, ...upgradesList]);
+        setActiveUpgrades([...activeUpgrades, newUp.id]);
+        setTitle(''); setDesc('');
+      };
+
+      return (
+        <div className="space-y-6 font-mono">
+          <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+            <h2 className="text-base font-bold text-white">⚙️ PU POWER UNIT 動力套件與升級庫</h2>
+            <p className="text-xs text-slate-400">裝備最新的讀書策略以提升馬力 (HP)。</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-[#0F131D] border border-slate-800 rounded-xl p-4">
+              <h3 className="text-xs font-bold text-white mb-3">+ 研發全新讀書引擎套件</h3>
+              <form onSubmit={handleAdd} className="space-y-3 text-xs">
+                <input type="text" placeholder="套件名稱 (例如: SQ3R)" value={title} onChange={e => setTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2 rounded text-white" />
+                <input type="number" placeholder="馬力 HP" value={hp} onChange={e => setHp(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2 rounded text-white" />
+                <textarea placeholder="策略說明細節..." value={desc} onChange={e => setDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2 rounded text-white" rows="2" />
+                <button type="submit" className="w-full bg-red-600 text-white font-bold py-2 rounded">研發並導入 PU 庫</button>
+              </form>
+            </div>
+
+            <div className="lg:col-span-2 space-y-3">
+              {upgradesList.map(u => {
+                const equipped = activeUpgrades.includes(u.id);
+                return (
+                  <div key={u.id} className={`bg-[#0F131D] border rounded-xl p-4 ${equipped ? 'border-red-600 bg-red-950/10' : 'border-slate-800'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                      <div className="font-bold text-sm text-white">{u.title} <span className="text-xs text-emerald-400">+{u.hp} HP</span></div>
+                      <button onClick={() => toggleUpgrade(u.id)} className={`px-2.5 py-1 text-xs rounded font-bold ${equipped ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
+                        {equipped ? '已裝備 ON' : '裝備 OFF'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-2">{u.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 3. 大獎賽讀書計畫模組 (含即時秒數倒數與圈數劃分)
+    function CalendarSection({ tasks, setTasks, gpCountdowns, setGpCountdowns, playBeep, setLapsCompleted }) {
+      const [now, setNow] = useState(new Date());
+      const [newTitle, setNewTitle] = useState('');
+      const [newDate, setNewDate] = useState('');
+
+      useEffect(() => {
+        const interval = setInterval(() => setNow(new Date()), 1000);
+        return () => clearInterval(interval);
+      }, []);
+
+      const primaryGp = gpCountdowns[0];
+
+      const calcTimeLeft = (targetStr) => {
+        const diff = new Date(targetStr).getTime() - now.getTime();
+        if (diff <= 0) return { d: 0, h: 0, m: 0, s: 0, expired: true };
+        return {
+          d: Math.floor(diff / (1000 * 60 * 60 * 24)),
+          h: Math.floor((diff / (1000 * 60 * 60)) % 24),
+          m: Math.floor((diff / 1000 / 60) % 60),
+          s: Math.floor((diff / 1000) % 60),
+          expired: false
+        };
+      };
+
+      const toggleTask = (id) => {
+        playBeep(1100, 'sine', 0.1);
+        setTasks(tasks.map(t => {
+          if (t.id === id) {
+            const next = !t.completed;
+            if (next) setLapsCompleted(prev => prev + (t.lapsReq - t.lapsDone));
+            return { ...t, completed: next, lapsDone: next ? t.lapsReq : t.lapsDone };
+          }
+          return t;
+        }));
+      };
+
+      return (
+        <div className="space-y-6 font-mono">
+          {/* 大型即時倒數看板 */}
+          {primaryGp && (() => {
+            const tl = calcTimeLeft(primaryGp.date);
+            return (
+              <div className="bg-gradient-to-b from-[#121826] to-[#0A0E17] border-2 border-red-600/60 rounded-2xl p-6 shadow-2xl relative">
+                <div className="text-xs text-slate-400 mb-1">距離主目標正賽倒數</div>
+                <h2 className="text-xl font-bold text-white mb-4">{primaryGp.title}</h2>
+                {tl.expired ? (
+                  <div className="text-red-500 font-bold">🏁 大獎賽已經開跑！LIGHTS OUT!</div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl"><div className="text-2xl font-bold text-amber-400">{tl.d}</div><div className="text-[10px] text-slate-400">天</div></div>
+                    <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl"><div className="text-2xl font-bold text-amber-400">{tl.h}</div><div className="text-[10px] text-slate-400">時</div></div>
+                    <div className="bg-slate-900 border border-slate-800 p-2 rounded-xl"><div className="text-2xl font-bold text-amber-400">{tl.m}</div><div className="text-[10px] text-slate-400">分</div></div>
+                    <div className="bg-red-950/80 border border-red-600 p-2 rounded-xl"><div className="text-2xl font-bold text-red-400">{tl.s}</div><div className="text-[10px] text-slate-400">秒</div></div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold text-white">📋 讀書圈數劃分任務</h3>
+            {tasks.map(t => (
+              <div key={t.id} className="bg-[#0F131D] border border-slate-800 rounded-xl p-3 flex justify-between items-center">
+                <div className="flex items-center space-x-3">
+                  <button onClick={() => toggleTask(t.id)} className={`px-2 py-1 text-xs rounded border ${t.completed ? 'bg-emerald-950 border-emerald-600 text-emerald-400' : 'border-slate-700 text-slate-500'}`}>
+                    {t.completed ? '✓ 已完成' : '標記完成'}
+                  </button>
+                  <div>
+                    <span className="text-[10px] bg-slate-900 text-red-400 px-1.5 py-0.5 rounded border border-slate-800">{t.subject}</span>
+                    <div className={`text-xs font-bold mt-1 ${t.completed ? 'line-through text-slate-500' : 'text-white'}`}>{t.title}</div>
+                  </div>
+                </div>
+                <div className="text-xs text-amber-400 font-bold">{t.lapsDone}/{t.lapsReq} 圈</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // 4. 正賽 Telemetry 數據分析模組
+    function AnalyticsSection({ exams, setExams, lapsCompleted, playBeep }) {
+      const [name, setName] = useState('');
+      const [target, setTarget] = useState(90);
+      const [actual, setActual] = useState(85);
+
+      const handleAddExam = (e) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        playBeep(1100, 'sine', 0.1);
+        setExams([{ id: Date.now(), subject: '綜合', name, target: parseFloat(target), actual: parseFloat(actual), date: '2026-10-29' }, ...exams]);
+        setName('');
+      };
+
+      const avg = exams.length > 0 ? Math.round(exams.reduce((acc, e) => acc + e.actual, 0) / exams.length) : 0;
+
+      return (
+        <div className="space-y-6 font-mono">
+          <div className="bg-gradient-to-r from-[#0F131D] via-red-950/30 to-[#0F131D] border border-red-800/40 rounded-2xl p-5 flex justify-between items-center">
+            <div>
+              <div className="text-xs text-slate-400">車手戰術積分級別</div>
+              <div className="text-lg font-bold text-white">{exams.length === 0 ? '尚未登錄正賽成績' : avg >= 85 ? '世界冠軍領跑 (P1)' : '競爭者 (P2/P3)'}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-slate-400">平均得分</div>
+              <div className="text-xl font-bold text-amber-400">{avg} 分</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-[#0F131D] border border-slate-800 rounded-xl p-4">
+              <h3 className="text-xs font-bold text-white mb-3">+ 手動登錄正賽成績</h3>
+              <form onSubmit={handleAddExam} className="space-y-3 text-xs">
+                <input type="text" placeholder="考試名稱 (例如: 第一次段考)" value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2 rounded text-white" required />
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="number" placeholder="目標分" value={target} onChange={e => setTarget(e.target.value)} className="bg-slate-900 border border-slate-800 p-2 rounded text-white" />
+                  <input type="number" placeholder="實際分" value={actual} onChange={e => setActual(e.target.value)} className="bg-slate-900 border border-slate-800 p-2 rounded text-white" />
+                </div>
+                <button type="submit" className="w-full bg-red-600 text-white font-bold py-2 rounded">登錄成績數據</button>
+              </form>
+            </div>
+
+            <div className="lg:col-span-2 space-y-3">
+              {exams.map(e => (
+                <div key={e.id} className="bg-[#0F131D] border border-slate-800 rounded-xl p-4 flex justify-between items-center">
+                  <div>
+                    <div className="text-xs text-slate-400">{e.date}</div>
+                    <div className="text-sm font-bold text-white">{e.name}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-base font-bold text-white">{e.actual} 分</div>
+                    <div className={`text-[10px] ${e.actual >= e.target ? 'text-emerald-400' : 'text-red-400'}`}>
+                      Delta: {e.actual - e.target >= 0 ? `+${e.actual - e.target}` : e.actual - e.target}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
